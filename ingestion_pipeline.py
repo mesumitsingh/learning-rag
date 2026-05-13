@@ -4,8 +4,11 @@ from langchain_text_splitters import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma 
 from dotenv import load_dotenv
+from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+
 
 load_dotenv()
+
 
 def load_documents(docs_path="docs"): 
     """Load all text files from the docs directory"""
@@ -19,10 +22,13 @@ def load_documents(docs_path="docs"):
     loader = DirectoryLoader( 
         path = docs_path,
         glob = "*.txt",
-        loader_cls = TextLoader
+        loader_cls = TextLoader,
+        loader_kwargs={"encoding": "utf-8"}
     )
 
+
     documents = loader.load()
+
 
     if len(documents) == 0: 
         raise FileNotFoundError(f"No .txt fils found in {docs_path}. Please add your company documents.")
@@ -36,14 +42,67 @@ def load_documents(docs_path="docs"):
 
     return documents
 
+
+def split_documents(documents, chunk_size=800, chunk_overlap=10): 
+    """Split documents into smaller chunks with overlap"""
+    print("Splitting documents into chunks...")
+
+    text_splitter=CharacterTextSplitter( 
+        chunk_size=chunk_size, 
+        chunk_overlap=chunk_overlap
+    )
+
+    chunks = text_splitter.split_documents(documents)
+
+    if chunks: 
+        for i, chunk in enumerate(chunks[:5]): 
+            print(f"\n--- Chunk {i+1} ---")
+            print(f"Source: {chunk.metadata['source']}")
+            print(f"Length: {len(chunk.page_content)} characters")
+            print(f"Content: ")
+            print(chunk.page_content)
+            print("-" * 50)
+
+        if len(chunks) > 5: 
+            print(f"\n... and {len(chunks) - 5} more chunks")
+
+    return chunks
+
+
+def create_vector_store(chunks, persist_directory="db/chroma_db"): 
+    """Create and persist ChromaDB vector store"""
+    print("Creating embeddings and storing in ChromaDB...")
+
+    embedding_model = NVIDIAEmbeddings(
+        model= os.getenv("EmbeddingModel"),
+        api_key=os.getenv("API_KEY"), 
+        base_url=os.getenv("BASE_URL")
+        )
+
+    # Create ChromaDB vector store
+    print("--- Creating vector store ---")
+    vectorstore = Chroma.from_documents( 
+        documents = chunks, 
+        embedding = embedding_model,
+        persist_directory = persist_directory, 
+        collection_metadata = {"hnsw:space": "cosine"}
+    )
+    print("--- finished creating vector store ---")
+
+    print(f"Vector store created and saved to {persist_directory}")
+    return vectorstore
+
 def main():
     print("Main Function")
 
     #1. Loading the files
     documents = load_documents(docs_path="docs")
+    
     #2. Chunking the files
-    #3. Embedding and Storing in Vector DB
+    chunks = split_documents(documents)
 
+    #3. Embedding and Storing in Vector DB
+    vectorstore = create_vector_store(chunks)
 
 if __name__ == "__main__":
     main()

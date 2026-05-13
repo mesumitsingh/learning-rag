@@ -4,3 +4,5 @@ langchain_text_splitters
 langchain_openai
 langchain_chroma
 python_dotenv
+langchain_nvidia_ai_endpoints 
+langchain-experimental
